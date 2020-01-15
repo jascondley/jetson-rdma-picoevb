@@ -1252,17 +1252,23 @@ static const struct pevb_drvdata drvdata_htg_k800 = {
 	.fpga_ram_size = SZ_2G,
 };
 
-#define PCI_ENTRY(sub_dev_id, data) \
+static const struct pevb_drvdata drvdata_kcu_105 = {
+	.num_h2c_chans = 1,
+	.fpga_ram_size = SZ_2G,
+};
+
+#define PCI_ENTRY(vendor, dev_id, sub_dev_id, data) \
 	{ \
 		PCI_DEVICE_SUB( \
-			PCI_VENDOR_ID_NVIDIA, 0x0001, \
-			PCI_VENDOR_ID_NVIDIA, sub_dev_id), \
+			vendor, dev_id, \
+			vendor, sub_dev_id), \
 	        .driver_data = (unsigned long)&drvdata_##data, \
 	}
 
 static const struct pci_device_id pevb_pci_ids[] = {
-	PCI_ENTRY(0x0001, picoevb),
-	PCI_ENTRY(0x0002, htg_k800),
+	PCI_ENTRY(PCI_VENDOR_ID_NVIDIA, 0x0001, 0x0001, picoevb),
+	PCI_ENTRY(PCI_VENDOR_ID_NVIDIA, 0x0001, 0x0002, htg_k800),
+	PCI_ENTRY(PCI_VENDOR_ID_XILINX, 0x8038, 0x0007, kcu_105),
 	{ },
 };
 MODULE_DEVICE_TABLE(pci, pevb_pci_ids);
