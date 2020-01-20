@@ -561,8 +561,16 @@ static irqreturn_t pevb_irq_handler(int irq, void *data)
 		ret = IRQ_HANDLED;
 	}
 
+    reg = XLNX_REG(IRQ, 0, IRQ_USR_REQ);
+    status = pevb_readl(pevb, BAR_DMA, reg);
+    if (status) {
+        dev_dbg(&pevb->pdev->dev, "USR IRQ status 0x%08x", status);
+        ret = IRQ_HANDLED;
+    }
+
+
 	return ret;
-}
+
 
 static int pevb_dma(struct pevb *pevb, bool c2h)
 {
@@ -1179,6 +1187,9 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev_err(&pdev->dev, "request_irq(): %d\n", ret);
 		goto err_clear_master;
 	}
+    /* Enable user interrupts */
+    reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1S);
+    val = pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
 
 	return 0;
 
