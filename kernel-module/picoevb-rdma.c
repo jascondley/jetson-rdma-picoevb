@@ -35,6 +35,7 @@
 #include "picoevb-rdma.h"
 
 #define MODULENAME	"picoevb-rdma"
+#define MODULENAME_IRQ	"picoevb-rdma-irq"
 
 #define BAR_GPIO	0
 #define BAR_DMA		1
@@ -58,9 +59,12 @@ struct pevb {
 	struct device			*dev;
 	const struct pevb_drvdata	*drvdata;
 	struct device			*devnode;
+	struct device			*usr_irq_devnode;
 	struct device_dma_parameters	dma_params;
 	dev_t				devt;
+	dev_t				usr_irq_devt;
 	struct cdev			cdev;
+	struct cdev			usr_irq_cdev;
 	void __iomem * const		*iomap;
 	struct semaphore		sem;
 	void				*descs_ptr;
@@ -1107,6 +1111,25 @@ static const struct file_operations pevb_fops = {
 	.release	= pevb_fops_release,
 	.unlocked_ioctl	= pevb_fops_unlocked_ioctl,
 };
+static int pevb_irq_fops_open(struct inode *inode, struct file *filep) {
+	printk("IRQ Open\n");
+	return 0;
+}
+static int pevb_irq_fops_release(struct inode *inode, struct file *filep) {
+	printk("IRQ Release\n");
+	return 0;
+}
+static ssize_t pevb_irq_fops_read(struct file *file, char __user *user_buffer, size_t size, loff_t *offset) {
+	printk("IRQ Read\n");
+	return 0;
+}
+
+static const struct file_operations pevb_irq_fops = {
+	.owner		= THIS_MODULE,
+	.open		= pevb_irq_fops_open,
+	.release	= pevb_irq_fops_release,
+	.read		= pevb_irq_fops_read,
+};
 
 static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -1165,6 +1188,28 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		ret = -ENOMEM;
 		goto err_cdev_del;
 	}
+	
+	/* USR_IRQ file creation */
+	ret = alloc_chrdev_region(&pevb->usr_irq_devt, 0, 1, MODULENAME_IRQ);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "[IRQ] alloc_chrdev_region(): %d\n", ret);
+		return ret;
+	}
+
+	cdev_init(&pevb->usr_irq_cdev, &pevb_irq_fops);
+	ret = cdev_add(&pevb->usr_irq_cdev, pevb->usr_irq_devt, 1);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "[IRQ] cdev_add(): %d\n", ret);
+		goto err_unregister_chrdev_region;
+	}
+	
+	pevb->usr_irq_devnode = device_create(pevb_class, &pevb->pdev->dev, 
+		pevb->usr_irq_devt, NULL, "picoevb_usr_irq");
+	if (!pevb->usr_irq_devnode) {
+		ret = -ENOMEM;
+		goto err_cdev_del;
+	}
+	/* </USR_IRQ> */
 
 	ret = pcim_enable_device(pdev);
 	if (ret < 0) {
@@ -1189,10 +1234,15 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev_err(&pdev->dev, "request_irq(): %d\n", ret);
 		goto err_clear_master;
 	}
+
+
+
+
     /* Enable user interrupts */
+	/*
     reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1S);
     pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
-
+*/
 	return 0;
 
 err_clear_master:
