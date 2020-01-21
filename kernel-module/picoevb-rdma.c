@@ -570,6 +570,7 @@ static irqreturn_t pevb_irq_handler(int irq, void *data)
 
 
 	return ret;
+}
 
 
 static int pevb_dma(struct pevb *pevb, bool c2h)
@@ -1110,6 +1111,7 @@ static const struct file_operations pevb_fops = {
 static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct pevb *pevb;
+	u32 reg;
 	int ret;
 
 	pevb = devm_kzalloc(&pdev->dev, sizeof(*pevb), GFP_KERNEL);
@@ -1189,7 +1191,7 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
     /* Enable user interrupts */
     reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1S);
-    val = pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
+    pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
 
 	return 0;
 
@@ -1233,14 +1235,14 @@ static const struct pevb_drvdata drvdata_htg_k800 = {
 #define PCI_ENTRY(sub_dev_id, data) \
 	{ \
 		PCI_DEVICE_SUB( \
-			PCI_VENDOR_ID_NVIDIA, 0x0001, \
-			PCI_VENDOR_ID_NVIDIA, sub_dev_id), \
+			PCI_VENDOR_ID_XILINX, 0x8038, \
+			PCI_VENDOR_ID_XILINX, sub_dev_id), \
 	        .driver_data = (unsigned long)&drvdata_##data, \
 	}
 
 static const struct pci_device_id pevb_pci_ids[] = {
 	PCI_ENTRY(0x0001, picoevb),
-	PCI_ENTRY(0x0002, htg_k800),
+	PCI_ENTRY(0x0007, htg_k800),
 	{ },
 };
 MODULE_DEVICE_TABLE(pci, pevb_pci_ids);
