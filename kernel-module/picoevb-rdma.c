@@ -1235,6 +1235,7 @@ static const struct pevb_drvdata drvdata_kcu_105 = {
 static const struct pci_device_id pevb_pci_ids[] = {
 	PCI_ENTRY(PCI_VENDOR_ID_NVIDIA, 0x0001, 0x0001, picoevb),
 	PCI_ENTRY(PCI_VENDOR_ID_NVIDIA, 0x0001, 0x0002, htg_k800),
+	PCI_ENTRY(PCI_VENDOR_ID_XILINX, 0x8038, 0x0007, kcu_105),
 	PCI_ENTRY(PCI_VENDOR_ID_XILINX, 0x8018, 0x0007, kcu_105),
 	{ },
 };

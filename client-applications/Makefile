@@ -39,6 +39,8 @@ TARGETS += rdma-cuda
 TARGETS += rdma-malloc
 TARGETS += rdma-malloc-h2c-perf
 TARGETS += rdma-malloc-c2h-perf
+TARGETS += rdma-read
+TARGETS += rdma-write
 TARGETS += set-leds
 default: $(TARGETS)
 
@@ -49,6 +51,12 @@ rdma-malloc%: rdma-malloc%.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 set-leds: set-leds.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
+	$(CC) $(CFLAGS) -o $@ $<
+
+rdma-read: rdma-read.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
+	$(CC) $(CFLAGS) -o $@ $<
+
+rdma-write: rdma-write.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
