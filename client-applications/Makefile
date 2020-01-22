@@ -36,15 +36,21 @@ endif
 
 TARGETS :=
 TARGETS += rdma-cuda
+TARGETS += cuda-babe
 TARGETS += rdma-malloc
 TARGETS += rdma-malloc-h2c-perf
 TARGETS += rdma-malloc-c2h-perf
 TARGETS += rdma-read
 TARGETS += rdma-write
 TARGETS += set-leds
+TARGETS += rdma-c2h
+
 default: $(TARGETS)
 
 rdma-cuda: rdma-cuda.cu ../kernel-module/picoevb-rdma-ioctl.h Makefile
+	$(NVCC) $(addprefix -Xcompiler ,$(CFLAGS)) -o $@ $< -l cuda
+
+cuda-babe: cuda-babe.cu ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(NVCC) $(addprefix -Xcompiler ,$(CFLAGS)) -o $@ $< -l cuda
 
 rdma-malloc%: rdma-malloc%.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
@@ -57,6 +63,9 @@ rdma-read: rdma-read.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 rdma-write: rdma-write.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
+	$(CC) $(CFLAGS) -o $@ $<
+
+rdma-c2h: rdma-c2h.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
