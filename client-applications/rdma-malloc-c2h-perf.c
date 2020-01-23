@@ -32,7 +32,7 @@
 #include <sys/types.h>
 #include "../kernel-module/picoevb-rdma-ioctl.h"
 
-#define MAX_TRANSFER_SIZE (100 * 1024 * 1024)
+#define MAX_TRANSFER_SIZE (8 * 1024 * 1024)
 
 int main(int argc, char **argv)
 {

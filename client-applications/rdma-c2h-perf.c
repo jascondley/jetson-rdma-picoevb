@@ -26,10 +26,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/ioctl.h>
+#include <time.h>
+#include <math.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/types.h>
+#include <math.h>
+#include <sys/ioctl.h>
 #include "../kernel-module/picoevb-rdma-ioctl.h"
 
 #define MAX_TRANSFER_SIZE (8 * 1024 * 1024)
@@ -39,13 +41,13 @@ int main(int argc, char **argv)
 	int fd, ret;
 	struct picoevb_rdma_card_info card_info;
 	uint64_t transfer_size;
-	void *src;
-	struct picoevb_rdma_h2c_dma dma_params;
-	struct timeval  tvs, tve;
+	void *dst;
+	struct picoevb_rdma_c2h_dma dma_params;
+	struct timespec tvs, tve, tres;
 	uint64_t tdelta_us;
 
 	if (argc != 1) {
-		fprintf(stderr, "usage: rdma-malloc\n");
+		fprintf(stderr, "usage: rdma-c2h-perf\n");
 		return 1;
 	}
 
@@ -55,39 +57,55 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ret = ioctl(fd, PICOEVB_IOC_CARD_INFO, &card_info);
-	if (ret != 0) {
-		fprintf(stderr, "ioctl(CARD_INFO) failed: %d\n", ret);
-		perror("ioctl() failed");
-		return 1;
-	}
-	transfer_size = card_info.fpga_ram_size;
-	if (transfer_size > MAX_TRANSFER_SIZE)
-		transfer_size = MAX_TRANSFER_SIZE;
+	int CHUNK_SAMPLES = log(MAX_TRANSFER_SIZE) / log(2);
+	int NUM_AVERAGES = 100;   // Number of tests at each chunk size
 
-	src = calloc(transfer_size, 1);
-	if (!src) {
-		fprintf(stderr, "malloc(src) failed\n");
-		return 1;
+	uint64_t len_array[CHUNK_SAMPLES];
+	for (int i = 0; i < CHUNK_SAMPLES; i++) {
+		len_array[i] = pow(2, i+1);
+		if (len_array[i] > MAX_TRANSFER_SIZE)
+			len_array[i] = MAX_TRANSFER_SIZE;
 	}
 
-	dma_params.src = (__u64)src;
-	dma_params.dst = 0;
-	dma_params.len = transfer_size;
-	dma_params.flags = 0;
-	gettimeofday(&tvs, NULL);
-	ret = ioctl(fd, PICOEVB_IOC_H2C_DMA, &dma_params);
-	gettimeofday(&tve, NULL);
-	if (ret != 0) {
-		fprintf(stderr, "ioctl(DMA) failed: %d\n", ret);
-		perror("ioctl() failed");
-		return 1;
+	uint64_t time_array[CHUNK_SAMPLES];
+	for (int i = 0; i < CHUNK_SAMPLES; i++)
+		time_array[i] = 0;
+
+	for (int i = 0; i < CHUNK_SAMPLES; i++) {
+		transfer_size = len_array[i];
+		printf("Test transfer size = %lu\n", transfer_size);
+
+		dst = calloc(transfer_size, 1);
+		if (!dst) {
+			fprintf(stderr, "malloc(dst) failed\n");
+			return 1;
+		}
+
+		for (int j = 0; j < NUM_AVERAGES; j++) {
+			dma_params.src = 0;
+			dma_params.dst = (__u64)dst;
+			dma_params.len = transfer_size;
+			dma_params.flags = 0;
+			clock_gettime(CLOCK_REALTIME, &tvs);
+			ret = ioctl(fd, PICOEVB_IOC_C2H_DMA, &dma_params);
+			clock_gettime(CLOCK_REALTIME, &tve);
+			if (ret < 0) {
+				fprintf(stderr, "ioctl(DMA) failed: %d\n", ret);
+				perror("ioctl() failed");
+				return 1;
+			}
+
+			tdelta_us = ((tve.tv_sec - tvs.tv_sec) * 1000000) + (tve.tv_nsec - tvs.tv_nsec)/1000;
+			time_array[i] = time_array[i] + tdelta_us;
+		}
+
+		free(dst);
 	}
 
-	tdelta_us = ((tve.tv_sec - tvs.tv_sec) * 1000000) + tve.tv_usec - tvs.tv_usec;
-	printf("Bytes:%lu usecs:%lu MB/s:%lf\n", transfer_size, tdelta_us, (double)transfer_size / (double)tdelta_us);
-
-	free(src);
+	for (int i = 0; i < CHUNK_SAMPLES; i++) {
+		printf("Bytes:%lu usecs:%lu MB/s:%lf\n", len_array[i], time_array[i],
+		       (double)len_array[i]/ ((double)time_array[i] / NUM_AVERAGES));
+	}
 
 	ret = close(fd);
 	if (ret < 0) {

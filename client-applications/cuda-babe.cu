@@ -102,8 +102,11 @@ int main(int argc, char **argv)
     return 1;
   }
 
+  /*
   ce = cudaHostAlloc(&src_d, SURFACE_SIZE * sizeof(*src_d),
     cudaHostAllocDefault);
+    */
+  ce = cudaMallocManaged(&src_d, SURFACE_SIZE * sizeof(*src_d));
 
   if (ce != cudaSuccess) {
     fprintf(stderr, "Allocation of src_d failed: %d\n", ce);
@@ -117,6 +120,7 @@ int main(int argc, char **argv)
     return 1;
   }
 
+  /*
   pin_params_src.va = (__u64)src_d;
   pin_params_src.size = SURFACE_SIZE * sizeof(*src_d);
   ret = ioctl(fd, PICOEVB_IOC_PIN_CUDA, &pin_params_src);
@@ -124,6 +128,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "ioctl(PIN_CUDA src) failed: ret=%d errno=%d\n", ret, errno);
     return 1;
   }
+  */
 
 #if (SURFACE_W < 16) || (SURFACE_H < 16)
 #error Grid and block sizes must be shrunk for small surfaces
@@ -145,12 +150,14 @@ int main(int argc, char **argv)
     return 1;
   }
 
+  /*
   unpin_params_src.handle = pin_params_src.handle;
   ret = ioctl(fd, PICOEVB_IOC_UNPIN_CUDA, &unpin_params_src);
   if (ret != 0) {
     fprintf(stderr, "ioctl(UNPIN_CUDA src) failed: %d\n", ret);
     return 1;
   }
+  */
 
   dim3 dimGrid(SURFACE_W / 16, SURFACE_H / 16);
   dim3 dimBlock(16, 16);
@@ -165,7 +172,8 @@ int main(int argc, char **argv)
   // If this works, it's because of some weird zero-copy logic.
   HexDump((uint8_t*)src_d, SURFACE_SIZE * sizeof(*src_d));
 
-  ce = cudaFreeHost(src_d);
+  //ce = cudaFreeHost(src_d);
+  ce = cudaFree(src_d);
 
   if (ce != cudaSuccess) {
     fprintf(stderr, "Free of src_d failed: %d\n", ce);
