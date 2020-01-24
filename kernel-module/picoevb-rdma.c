@@ -66,6 +66,7 @@ struct pevb {
 	void				*descs_ptr;
 	dma_addr_t			descs_dma_addr;
 	struct completion		dma_xfer_cmpl;
+	struct completion		usr_irq_cmpl;
 	bool				h2c_error;
 	bool				c2h_error;
 };
@@ -149,6 +150,29 @@ static int pevb_fops_open(struct inode *inode, struct file *filep)
 
 	filep->private_data = pevb_file;
 
+	return 0;
+}
+
+
+static ssize_t pevb_fops_read(struct file *file, char __user *user_buffer, size_t size, loff_t *offset) {
+	struct pevb_file *pevb_file = (struct pevb_file *) file->private_data;
+	struct pevb *pevb = pevb_file->pevb;
+
+	u32 reg;
+	int ret;
+
+
+	printk("Reading\n");
+	reinit_completion(&pevb->usr_irq_cmpl);
+	// Enable User Interrupts
+	//
+	reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1S);
+        pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
+	ret = wait_for_completion_interruptible(&pevb->usr_irq_cmpl);
+	if(ret != 0) {
+		printk("Interrupt.. interrupted\n");
+	}
+	printk("Done Reading\n");
 	return 0;
 }
 
@@ -559,6 +583,19 @@ static irqreturn_t pevb_irq_handler(int irq, void *data)
 		pevb->c2h_error = !!(status & bad_status);
 		complete(&pevb->dma_xfer_cmpl);
 		ret = IRQ_HANDLED;
+	}
+
+	reg = XLNX_REG(IRQ, 0, IRQ_USR_REQ);
+	status = pevb_readl(pevb, BAR_DMA, reg);
+	if (status) {
+		dev_dbg(&pevb->pdev->dev, "USR IRQ status 0x%08x\n", status);
+		complete(&pevb->usr_irq_cmpl);
+		ret = IRQ_HANDLED;
+		reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1C);
+	        pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
+	} else {
+		reg = XLNX_REG(IRQ, 0, IRQ_USR_INT_EN_W1C);
+	        pevb_writel(pevb, BAR_DMA, 0xffffffffU, reg);
 	}
 
 	return ret;
@@ -1095,6 +1132,7 @@ static long pevb_fops_unlocked_ioctl(struct file *filep, unsigned int cmd,
 static const struct file_operations pevb_fops = {
 	.owner		= THIS_MODULE,
 	.open		= pevb_fops_open,
+	.read		= pevb_fops_read,
 	.release	= pevb_fops_release,
 	.unlocked_ioctl	= pevb_fops_unlocked_ioctl,
 };
@@ -1127,6 +1165,7 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	sema_init(&pevb->sem, 1);
 	init_completion(&pevb->dma_xfer_cmpl);
+	init_completion(&pevb->usr_irq_cmpl);
 
 	pevb->descs_ptr = dmam_alloc_coherent(&pdev->dev, SZ_4K,
 		&pevb->descs_dma_addr, GFP_KERNEL);

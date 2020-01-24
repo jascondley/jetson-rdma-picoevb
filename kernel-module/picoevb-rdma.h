@@ -142,12 +142,16 @@ struct xlnx_dma_desc {
 	BIT((channel) + (num_h2c))
 
 #define XLNX_DMA_IRQ_CH_INT_EN			0x10
-
 #define XLNX_DMA_IRQ_CH_INT_EN_W1S		0x14
-
 #define XLNX_DMA_IRQ_CH_INT_EN_W1C		0x18
-
 #define XLNX_DMA_IRQ_CH_PENDING			0x4c
+
+#define XLNX_DMA_IRQ_USR_INT_EN			0x04
+#define XLNX_DMA_IRQ_USR_INT_EN_W1S		0x08
+#define XLNX_DMA_IRQ_USR_INT_EN_W1C		0x0c
+#define XLNX_DMA_IRQ_USR_REQ			0x40
+#define XLNX_DMA_IRQ_USR_PENDING		0x48
+
 
 /* Config block */
 
