@@ -54,13 +54,16 @@ struct pevb_drvdata {
 };
 
 struct pevb {
+	unsigned 			magic;
 	struct pci_dev			*pdev;
 	struct device			*dev;
 	const struct pevb_drvdata	*drvdata;
 	struct device			*devnode;
+	struct device			*mmdevnode;
 	struct device_dma_parameters	dma_params;
 	dev_t				devt;
 	struct cdev			cdev;
+	struct cdev			mmcdev;
 	void __iomem * const		*iomap;
 	struct semaphore		sem;
 	void				*descs_ptr;
@@ -1132,6 +1135,78 @@ static const struct file_operations pevb_fops = {
 	.unlocked_ioctl	= pevb_fops_unlocked_ioctl,
 };
 
+static int mm_fops_open(struct inode *inode, struct file *filep) {
+	struct pevb *pevb = container_of(inode->i_cdev, struct pevb, mmcdev);
+	struct pevb_file *pevb_file;
+
+	pevb_file = kzalloc(sizeof(*pevb_file), GFP_KERNEL);
+	if (!pevb_file)
+		return -ENOMEM;
+
+	pevb_file->pevb = pevb;
+	mutex_init(&pevb_file->lock);
+	idr_init(&pevb_file->cuda_surfaces);
+
+	filep->private_data = pevb_file;
+	return 0;
+}
+
+static int mm_fops_release(struct inode *inode, struct file *filep) {
+	struct pevb_file *pevb_file = filep->private_data;
+	kfree(pevb_file);
+	return 0;
+}
+static ssize_t mm_fops_read(struct file *file, char __user *user_buffer, size_t size, loff_t *offset) {
+	// We only want to error out when someone tries to read from the mmap device
+	return -1;
+}
+
+static int mm_fops_mmap(struct file *filep, struct vm_area_struct *vma) {
+	struct pevb_file *pevb_file = filep->private_data;
+	struct pevb *pevb = pevb_file->pevb;
+	unsigned long off;
+	unsigned long phys;
+	unsigned long vsize;
+	unsigned long psize;
+	int ret;
+
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): VM Area Start -- End: 0x%08lx -- 0x%08lx\n", vma->vm_start, vma->vm_end);
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): VM Area Size: 0x%08lx\n", vma->vm_end - vma->vm_start);
+
+	off = vma->vm_pgoff << PAGE_SHIFT;
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): OFF = %ld\n", off);
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): pdev = 0x%08lx\n", (unsigned long)pevb->pdev);
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): pdev info -- vendor/device: %08x:%08x", pevb->pdev->vendor, pevb->pdev->device);
+
+	/* BAR physical address */
+	phys = pci_resource_start(pevb->pdev, 0) + off;
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): PHYS = 0x%08lx\n", phys);
+	vsize = vma->vm_end - vma->vm_start;
+	psize = pci_resource_end(pevb->pdev, 0) -
+		pci_resource_start(pevb->pdev, 0) + 1 - off;
+
+	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): Vsize = %ld, psize = %ld", vsize, psize);
+	if(vsize > psize)
+		return -EINVAL;
+
+	/* Do not cache pages */
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	vma->vm_flags |= VM_IO | VM_DONTEXPAND | VM_DONTDUMP;
+	ret = io_remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
+			vsize, vma->vm_page_prot);
+	if(ret)
+		return -EAGAIN;
+	return 0;
+}
+
+static const struct file_operations mmap_fops = {
+	.owner 		= THIS_MODULE,
+	.open		= mm_fops_open,
+	.read		= mm_fops_read,
+	.mmap		= mm_fops_mmap,
+	.release	= mm_fops_release,
+};
+
 static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct pevb *pevb;
@@ -1141,6 +1216,7 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (!pevb)
 		return -ENOMEM;
 	pci_set_drvdata(pdev, pevb);
+	pevb->magic = 0xBEADCAFE;
 	pevb->pdev = pdev;
 	pevb->drvdata = (const struct pevb_drvdata *)ent->driver_data;
 
@@ -1169,14 +1245,21 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -ENOMEM;
 	}
 
-	ret = alloc_chrdev_region(&pevb->devt, 0, 1, MODULENAME);
+	ret = alloc_chrdev_region(&pevb->devt, 0, 2, MODULENAME);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "alloc_chrdev_region(): %d\n", ret);
 		return ret;
 	}
 
 	cdev_init(&pevb->cdev, &pevb_fops);
+	cdev_init(&pevb->mmcdev, &mmap_fops);
 	ret = cdev_add(&pevb->cdev, pevb->devt, 1);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "cdev_add(): %d\n", ret);
+		goto err_unregister_chrdev_region;
+	}
+
+	ret = cdev_add(&pevb->mmcdev, pevb->devt+1, 1);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "cdev_add(): %d\n", ret);
 		goto err_unregister_chrdev_region;
@@ -1185,6 +1268,13 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pevb->devnode = device_create(pevb_class, &pevb->pdev->dev, pevb->devt,
 		NULL, "picoevb");
 	if (!pevb->devnode) {
+		ret = -ENOMEM;
+		goto err_cdev_del;
+	}
+
+	pevb->mmdevnode = device_create(pevb_class, &pevb->pdev->dev, pevb->devt+1,
+		NULL, "picoevb_user");
+	if (!pevb->mmdevnode) {
 		ret = -ENOMEM;
 		goto err_cdev_del;
 	}
@@ -1219,10 +1309,12 @@ err_clear_master:
 	pci_clear_master(pdev);
 err_device_destroy:
 	device_destroy(pevb_class, pevb->devt);
+	device_destroy(pevb_class, pevb->devt+1);
 err_cdev_del:
 	cdev_del(&pevb->cdev);
+	cdev_del(&pevb->mmcdev);
 err_unregister_chrdev_region:
-	unregister_chrdev_region(pevb->devt, 1);
+	unregister_chrdev_region(pevb->devt, 2);
 	return ret;
 }
 
@@ -1233,8 +1325,10 @@ static void pevb_remove(struct pci_dev *pdev)
 	free_irq(pdev->irq, pevb);
 	pci_clear_master(pdev);
 	device_destroy(pevb_class, pevb->devt);
+	device_destroy(pevb_class, pevb->devt+1);
 	cdev_del(&pevb->cdev);
-	unregister_chrdev_region(pevb->devt, 1);
+	cdev_del(&pevb->mmcdev);
+	unregister_chrdev_region(pevb->devt, 2);
 	pdev->dev.dma_parms = NULL;
 }
 

@@ -40,6 +40,7 @@ TARGETS += rdma-malloc
 TARGETS += rdma-malloc-h2c-perf
 TARGETS += rdma-malloc-c2h-perf
 TARGETS += set-leds
+TARGETS += test-mmap
 default: $(TARGETS)
 
 rdma-cuda: rdma-cuda.cu ../kernel-module/picoevb-rdma-ioctl.h Makefile
@@ -49,6 +50,9 @@ rdma-malloc%: rdma-malloc%.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 set-leds: set-leds.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
+	$(CC) $(CFLAGS) -o $@ $<
+
+test-mmap: test-mmap.c ../kernel-module/picoevb-rdma-ioctl.h Makefile
 	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
