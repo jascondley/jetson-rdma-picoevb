@@ -36,7 +36,7 @@
 
 #define MODULENAME	"picoevb-rdma"
 
-#define BAR_GPIO	0
+#define BAR_AXIL	0
 #define BAR_DMA		1
 
 #ifdef NV_BUILD_DGPU
@@ -220,7 +220,7 @@ static int pevb_ioctl_led(struct pevb_file *pevb_file, unsigned long arg)
 {
 	struct pevb *pevb = pevb_file->pevb;
 
-	pevb_writel(pevb, BAR_GPIO, arg, 0);
+	pevb_writel(pevb, BAR_AXIL, arg, 0);
 	return 0;
 }
 
@@ -1179,11 +1179,11 @@ static int mm_fops_mmap(struct file *filep, struct vm_area_struct *vma) {
 	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): pdev info -- vendor/device: %08x:%08x", pevb->pdev->vendor, pevb->pdev->device);
 
 	/* BAR physical address */
-	phys = pci_resource_start(pevb->pdev, 0) + off;
+	phys = pci_resource_start(pevb->pdev, BAR_AXIL) + off;
 	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): PHYS = 0x%08lx\n", phys);
 	vsize = vma->vm_end - vma->vm_start;
-	psize = pci_resource_end(pevb->pdev, 0) -
-		pci_resource_start(pevb->pdev, 0) + 1 - off;
+	psize = pci_resource_end(pevb->pdev, BAR_AXIL) -
+		pci_resource_start(pevb->pdev, BAR_AXIL) + 1 - off;
 
 	dev_dbg(&pevb->pdev->dev, "mm_fops_mmap(): Vsize = %ld, psize = %ld", vsize, psize);
 	if(vsize > psize)
@@ -1285,7 +1285,7 @@ static int pevb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_device_destroy;
 	}
 
-	ret = pcim_iomap_regions(pdev, BIT(BAR_GPIO) | BIT(BAR_DMA),
+	ret = pcim_iomap_regions(pdev, BIT(BAR_AXIL) | BIT(BAR_DMA),
 		MODULENAME);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "pcim_iomap_regions(): %d\n", ret);
